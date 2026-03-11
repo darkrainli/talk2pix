@@ -271,17 +271,30 @@ function render(t) {
   const rows = Math.floor(H / cell);
   const bg = SCHEMES[scheme]?.bg || '#06060f';
 
-  // --- Render text to offscreen ---
+  // --- Render text to offscreen (auto-fit, centered, no clipping) ---
   const off = new OffscreenCanvas(W, H);
   const octx = off.getContext('2d');
-  const maxFontSize = Math.min(H * 0.55, (W / (text.length * 0.62)));
-  const fontSize = Math.max(20, maxFontSize);
+  const PAD = 0.88; // use 88% of canvas so there's always breathing room
+  octx.textAlign = 'center';
+  octx.textBaseline = 'alphabetic';
+  // Binary-search the largest font that fits both width & height
+  let lo = 8, hi = Math.max(W, H) * 2, fontSize = 40;
+  for (let i = 0; i < 20; i++) {
+    const mid = (lo + hi) / 2;
+    octx.font = `900 ${mid}px Arial Black, Arial, sans-serif`;
+    const m = octx.measureText(text);
+    const tw = m.width;
+    const th = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
+    if (tw <= W * PAD && th <= H * PAD) { fontSize = mid; lo = mid; }
+    else hi = mid;
+  }
+  octx.font = `900 ${fontSize}px Arial Black, Arial, sans-serif`;
+  const fm = octx.measureText(text);
+  const textH = fm.actualBoundingBoxAscent + fm.actualBoundingBoxDescent;
   octx.clearRect(0, 0, W, H);
   octx.fillStyle = '#fff';
-  octx.font = `900 ${fontSize}px Arial Black, Arial, sans-serif`;
-  octx.textAlign = 'center';
-  octx.textBaseline = 'middle';
-  octx.fillText(text, W / 2, H / 2);
+  // Draw so the visual center of the glyph lands exactly at canvas center
+  octx.fillText(text, W / 2, H / 2 + (fm.actualBoundingBoxAscent - textH / 2));
   const imgData = octx.getImageData(0, 0, W, H).data;
 
   // Build grid map

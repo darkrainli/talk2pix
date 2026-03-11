@@ -159,6 +159,14 @@
         <option value="circles">圆点阵 Circles</option>
         <option value="glitch">故障艺术 Glitch</option>
         <option value="mixed">混合 Mixed</option>
+        <option value="wave">正弦波 Wave</option>
+        <option value="noise">有机噪声 Noise</option>
+        <option value="halftone">半调印刷 Halftone</option>
+        <option value="circuit">电路板 Circuit</option>
+        <option value="ascii">ASCII灰度 ASCII</option>
+        <option value="triangles">三角网格 Triangles</option>
+        <option value="spiral">螺旋漩涡 Spiral</option>
+        <option value="flow">流场 Flow Field</option>
       </select>
     </div>
     <div class="opt-label">
@@ -226,13 +234,21 @@ const SCHEMES = {
 };
 
 const CHARS = {
-  matrix: 'ﾊﾐﾋｰｳｼﾅﾓﾆｻﾜﾂｵﾘｱﾎﾃﾏｹﾒｴｶｷﾑﾕﾗｾﾈｽﾀﾇﾍ日月火水木金土0123456789',
-  binary: '01',
-  hex: '0123456789ABCDEF',
-  blocks: '█▓▒░▪▫■□',
-  circles: '●○◉◎◌◍',
-  glitch: '01#@!%&XABCDEF▓░█',
-  mixed: '01█▓◉#@&ABCDEFabcdef∑∆Ω∞≠≡±√',
+  matrix:    'ﾊﾐﾋｰｳｼﾅﾓﾆｻﾜﾂｵﾘｱﾎﾃﾏｹﾒｴｶｷﾑﾕﾗｾﾈｽﾀﾇﾍ日月火水木金土0123456789',
+  binary:    '01',
+  hex:       '0123456789ABCDEF',
+  blocks:    '█▓▒░▪▫■□',
+  circles:   '●○◉◎◌◍',
+  glitch:    '01#@!%&XABCDEF▓░█',
+  mixed:     '01█▓◉#@&ABCDEFabcdef∑∆Ω∞≠≡±√',
+  wave:      '~∿≈∼≋⌇∞sincos',
+  noise:     '·∙•◦○◌◍◎⊙⊚',
+  halftone:  '●',
+  circuit:   '┼─│┌┐└┘├┤┬┴╋━┃╂┿+',
+  ascii:     ' .,:;|+xX$#@',
+  triangles: '△▲▽▼◁▷',
+  spiral:    '∿~◌○◎●⊙',
+  flow:      '←↑→↓↖↗↘↙⇐⇑⇒⇓',
 };
 
 function randChar(style) {
@@ -254,6 +270,51 @@ function midColor(scheme, x, y, t) {
 }
 function loColor(scheme) {
   return SCHEMES[scheme]?.lo || '#111';
+}
+
+// ---- Style helpers ----
+
+// Simulated Perlin noise via layered sin/cos
+function noiseVal(x, y, t) {
+  return ((Math.sin(x * 0.07 + t * 0.02) * Math.cos(y * 0.05 + t * 0.015)
+         + Math.sin(x * 0.03 - y * 0.04 + t * 0.01)
+         + Math.cos(x * 0.05 + y * 0.06 - t * 0.018)) / 3 + 1) / 2;
+}
+
+// Spiral / vortex value (0-1) for a grid cell
+function spiralVal(col, row, cols, rows, t) {
+  const dx = col - cols / 2, dy = row - rows / 2;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const angle = Math.atan2(dy, dx);
+  return (Math.sin(angle * 3 + dist * 0.35 - t * 0.07) + 1) / 2;
+}
+
+// Draw a triangle (up or down alternating by grid position)
+function drawTri(ctx, x, y, size, filled) {
+  const up = (Math.floor(x / size) + Math.floor(y / size)) % 2 === 0;
+  ctx.beginPath();
+  if (up) {
+    ctx.moveTo(x + size / 2, y + 1);
+    ctx.lineTo(x + size - 1, y + size - 1);
+    ctx.lineTo(x + 1, y + size - 1);
+  } else {
+    ctx.moveTo(x + 1, y + 1);
+    ctx.lineTo(x + size - 1, y + 1);
+    ctx.lineTo(x + size / 2, y + size - 1);
+  }
+  ctx.closePath();
+  if (filled) ctx.fill(); else ctx.stroke();
+}
+
+// Flow field direction arrow char based on noise angle
+function flowChar(x, y, t) {
+  const arrows = '→↗↑↖←↙↓↘';
+  const angle = Math.atan2(
+    Math.sin(x * 0.04 + t * 0.015),
+    Math.cos(y * 0.04 - t * 0.012)
+  );
+  const idx = Math.round(((angle + Math.PI) / (Math.PI * 2)) * 8) % 8;
+  return arrows[idx];
 }
 
 // ---- Core render ----
@@ -327,7 +388,8 @@ function render(t) {
 
       if (doRefresh) {
         if (!charGrid[idx]) charGrid[idx] = {};
-        charGrid[idx].c = randChar(style);
+        // flow/wave/spiral compute chars dynamically — still cache flicker
+        charGrid[idx].c = (style === 'flow') ? flowChar(x, y, t) : randChar(style);
         charGrid[idx].flicker = Math.random();
       }
       const cell_data = charGrid[idx] || { c: '0', flicker: 0 };
@@ -336,53 +398,164 @@ function render(t) {
         // --- Text pixel ---
         const flicker = cell_data.flicker;
         const brightness = isAnimating ? (0.6 + flicker * 0.4) : 1;
+        const col_hi = hiColor(scheme, x, y, t * 0.015);
 
         if (style === 'glitch' && Math.random() < 0.04) {
-          // Glitch offset
           ctx.fillStyle = `rgba(255,0,100,0.7)`;
           ctx.fillRect(x - 2, y, cell - 1, cell - 1);
           ctx.fillStyle = `rgba(0,200,255,0.7)`;
           ctx.fillRect(x + 2, y, cell - 1, cell - 1);
         }
 
-        const col_hi = hiColor(scheme, x, y, t * 0.015);
         ctx.globalAlpha = brightness;
+        ctx.fillStyle = col_hi;
 
         if (style === 'blocks' || style === 'glitch') {
-          ctx.fillStyle = col_hi;
           ctx.fillRect(x + 0.5, y + 0.5, cell - 1.5, cell - 1.5);
-          // Inner shade
           ctx.fillStyle = midColor(scheme, x, y, t * 0.015);
           ctx.fillRect(x + 2, y + 2, cell - 4, cell - 4);
+
         } else if (style === 'circles') {
           const r = (cell / 2 - 1) * (0.5 + flicker * 0.5);
-          ctx.fillStyle = col_hi;
           ctx.beginPath();
           ctx.arc(x + cell/2, y + cell/2, r, 0, Math.PI*2);
           ctx.fill();
+
+        } else if (style === 'halftone') {
+          const r = (cell / 2 - 0.5) * (0.35 + flicker * 0.65);
+          ctx.beginPath();
+          ctx.arc(x + cell/2, y + cell/2, r, 0, Math.PI*2);
+          ctx.fill();
+
+        } else if (style === 'triangles') {
+          drawTri(ctx, x, y, cell, true);
+
+        } else if (style === 'circuit') {
+          // Node square
+          ctx.fillRect(x + 1, y + 1, cell - 2, cell - 2);
+          ctx.fillStyle = SCHEMES[scheme]?.bg || '#060610';
+          ctx.fillRect(x + 3, y + 3, cell - 6, cell - 6);
+
+        } else if (style === 'ascii') {
+          const ramp = ' .,:;|+xX$#@';
+          const lv = Math.floor((0.55 + flicker * 0.45) * (ramp.length - 1));
+          ctx.fillText(ramp[lv], x, y + cell - 1);
+
+        } else if (style === 'wave') {
+          const wo = Math.sin(col * 0.45 + t * 0.09) * cell * 0.28;
+          ctx.fillText(cell_data.c, x, y + cell - 1 + wo);
+
+        } else if (style === 'noise') {
+          const n = noiseVal(x, y, t);
+          ctx.globalAlpha = brightness * (0.5 + n * 0.5);
+          ctx.fillText(cell_data.c, x, y + cell - 1);
+
+        } else if (style === 'spiral') {
+          const sv = spiralVal(col, row, cols, rows, t);
+          ctx.globalAlpha = brightness * (0.4 + sv * 0.6);
+          ctx.fillText(cell_data.c, x, y + cell - 1);
+
+        } else if (style === 'flow') {
+          ctx.fillText(flowChar(x, y, t), x, y + cell - 1);
+
         } else {
-          // Character styles
-          ctx.fillStyle = col_hi;
+          // matrix / binary / hex / mixed
           ctx.fillText(cell_data.c, x, y + cell - 1);
         }
         ctx.globalAlpha = 1;
 
       } else {
-        // --- Background noise character ---
-        if (Math.random() < noiseDensity) {
-          const dimAlpha = 0.08 + Math.random() * 0.15;
-          ctx.globalAlpha = dimAlpha;
-          ctx.fillStyle = loColor(scheme);
-          if (style === 'blocks') {
-            ctx.fillRect(x + 0.5, y + 0.5, cell - 1.5, cell - 1.5);
-          } else if (style === 'circles') {
+        // --- Background noise ---
+        const lo = loColor(scheme);
+
+        if (style === 'halftone') {
+          const n = noiseVal(x, y, t);
+          if (n > 0.55) {
+            const r = cell / 2 * (n - 0.55) * 1.5;
+            ctx.globalAlpha = 0.12 + n * 0.08;
+            ctx.fillStyle = lo;
             ctx.beginPath();
-            ctx.arc(x + cell/2, y + cell/2, cell/4, 0, Math.PI*2);
+            ctx.arc(x + cell/2, y + cell/2, r, 0, Math.PI*2);
             ctx.fill();
-          } else {
-            ctx.fillText(cell_data.c, x, y + cell - 1);
+            ctx.globalAlpha = 1;
           }
-          ctx.globalAlpha = 1;
+
+        } else if (style === 'triangles') {
+          if (Math.random() < noiseDensity * 0.5) {
+            ctx.globalAlpha = 0.06 + Math.random() * 0.1;
+            ctx.fillStyle = lo;
+            drawTri(ctx, x, y, cell, true);
+            ctx.globalAlpha = 1;
+          }
+
+        } else if (style === 'noise') {
+          const n = noiseVal(x, y, t);
+          if (n > 0.6) {
+            ctx.globalAlpha = (n - 0.6) * 0.4;
+            ctx.fillStyle = lo;
+            ctx.fillText(cell_data.c, x, y + cell - 1);
+            ctx.globalAlpha = 1;
+          }
+
+        } else if (style === 'wave') {
+          const wv = (Math.sin(col * 0.45 + t * 0.09) + 1) / 2;
+          if (Math.random() < noiseDensity * wv) {
+            ctx.globalAlpha = 0.05 + wv * 0.1;
+            ctx.fillStyle = lo;
+            ctx.fillText(cell_data.c, x, y + cell - 1);
+            ctx.globalAlpha = 1;
+          }
+
+        } else if (style === 'spiral') {
+          const sv = spiralVal(col, row, cols, rows, t);
+          if (sv > 0.65) {
+            ctx.globalAlpha = (sv - 0.65) * 0.35;
+            ctx.fillStyle = lo;
+            ctx.fillText(cell_data.c, x, y + cell - 1);
+            ctx.globalAlpha = 1;
+          }
+
+        } else if (style === 'circuit') {
+          if (Math.random() < noiseDensity * 0.55) {
+            ctx.globalAlpha = 0.12 + Math.random() * 0.18;
+            ctx.fillStyle = lo;
+            ctx.fillText(cell_data.c, x, y + cell - 1);
+            ctx.globalAlpha = 1;
+          }
+
+        } else if (style === 'ascii') {
+          if (Math.random() < noiseDensity * 0.6) {
+            const ramp = ' .,:;|+xX$#@';
+            const lv = Math.floor(Math.random() * 4); // sparse end
+            ctx.globalAlpha = 0.07 + Math.random() * 0.1;
+            ctx.fillStyle = lo;
+            ctx.fillText(ramp[lv], x, y + cell - 1);
+            ctx.globalAlpha = 1;
+          }
+
+        } else if (style === 'flow') {
+          if (Math.random() < noiseDensity * 0.7) {
+            ctx.globalAlpha = 0.08 + Math.random() * 0.12;
+            ctx.fillStyle = lo;
+            ctx.fillText(flowChar(x, y, t), x, y + cell - 1);
+            ctx.globalAlpha = 1;
+          }
+
+        } else {
+          if (Math.random() < noiseDensity) {
+            ctx.globalAlpha = 0.08 + Math.random() * 0.15;
+            ctx.fillStyle = lo;
+            if (style === 'blocks') {
+              ctx.fillRect(x + 0.5, y + 0.5, cell - 1.5, cell - 1.5);
+            } else if (style === 'circles') {
+              ctx.beginPath();
+              ctx.arc(x + cell/2, y + cell/2, cell/4, 0, Math.PI*2);
+              ctx.fill();
+            } else {
+              ctx.fillText(cell_data.c, x, y + cell - 1);
+            }
+            ctx.globalAlpha = 1;
+          }
         }
       }
     }

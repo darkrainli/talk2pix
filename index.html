@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>像素编码艺术</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #060610;
+    color: #eee;
+    font-family: 'Courier New', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px;
+    gap: 16px;
+  }
+
+  h1 {
+    font-size: 0.85rem;
+    letter-spacing: 8px;
+    color: #00ff88;
+    text-transform: uppercase;
+    opacity: 0.8;
+  }
+
+  .panel {
+    width: 100%;
+    max-width: 880px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  input[type="text"] {
+    flex: 1;
+    min-width: 200px;
+    background: #0d0d1a;
+    border: 1px solid #00ff8844;
+    border-bottom-color: #00ff88;
+    color: #00ff88;
+    padding: 10px 14px;
+    font-family: 'Courier New', monospace;
+    font-size: 1.1rem;
+    outline: none;
+    letter-spacing: 2px;
+    transition: border-color 0.2s;
+  }
+  input[type="text"]:focus { border-color: #00ff88; }
+  input[type="text"]::placeholder { color: #00ff8844; }
+
+  .btn {
+    background: transparent;
+    border: 1px solid currentColor;
+    color: #00ff88;
+    padding: 10px 18px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    letter-spacing: 2px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.2s;
+  }
+  .btn:hover { background: #00ff8822; }
+  .btn.active { background: #00ff88; color: #000; }
+
+  .opts {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .opt-label {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 0.7rem;
+    color: #555;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  select {
+    background: #0d0d1a;
+    border: 1px solid #333;
+    color: #aaa;
+    padding: 5px 8px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+    outline: none;
+    cursor: pointer;
+  }
+  select:focus { border-color: #00ff8866; }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 90px;
+    height: 2px;
+    background: #333;
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    background: #00ff88;
+    cursor: pointer;
+    border-radius: 50%;
+  }
+
+  #canvas {
+    width: 100%;
+    max-width: 880px;
+    border: 1px solid #0f0f22;
+    display: block;
+    image-rendering: pixelated;
+    cursor: crosshair;
+  }
+
+  .status {
+    font-size: 0.7rem;
+    color: #333;
+    letter-spacing: 2px;
+    align-self: flex-end;
+  }
+</style>
+</head>
+<body>
+
+<h1>Pixel Code Art Generator</h1>
+
+<div class="panel">
+  <div class="row">
+    <input type="text" id="textInput" placeholder="输入文字 / Enter text..." value="HELLO WORLD" maxlength="30">
+    <button class="btn" onclick="generate()">生成 GEN</button>
+    <button class="btn" id="animBtn" onclick="toggleAnimate()">动画 ANIM</button>
+    <button class="btn" onclick="saveImage()">保存 SAVE</button>
+  </div>
+
+  <div class="opts">
+    <div class="opt-label">
+      风格 Style
+      <select id="style">
+        <option value="matrix">矩阵雨 Matrix</option>
+        <option value="binary">二进制 Binary</option>
+        <option value="hex">十六进制 Hex</option>
+        <option value="blocks">像素块 Blocks</option>
+        <option value="circles">圆点阵 Circles</option>
+        <option value="glitch">故障艺术 Glitch</option>
+        <option value="mixed">混合 Mixed</option>
+      </select>
+    </div>
+    <div class="opt-label">
+      配色 Color
+      <select id="colorScheme">
+        <option value="green">黑客绿 Hacker</option>
+        <option value="cyan">电子蓝 Cyber</option>
+        <option value="fire">烈焰红 Fire</option>
+        <option value="purple">霓虹紫 Neon</option>
+        <option value="gold">铸金 Gold</option>
+        <option value="rainbow">彩虹 Rainbow</option>
+        <option value="white">极简 Mono</option>
+      </select>
+    </div>
+    <div class="opt-label">
+      密度 Density
+      <input type="range" id="density" min="1" max="6" value="3">
+    </div>
+    <div class="opt-label">
+      噪点 Noise
+      <input type="range" id="noise" min="0" max="10" value="4">
+    </div>
+    <div class="opt-label">
+      发光 Glow
+      <input type="range" id="glow" min="0" max="10" value="5">
+    </div>
+  </div>
+</div>
+
+<canvas id="canvas" width="880" height="440"></canvas>
+<div class="status" id="status">ready</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let animId = null;
+let isAnimating = false;
+let frame = 0;
+
+// --- Cell char cache (change every N frames for flicker) ---
+let charGrid = [];
+
+const SCHEMES = {
+  green:   { hi: '#00ff88', mid: '#00bb55', lo: '#003318', bg: '#02060e', scan: 'rgba(0,255,100,0.03)' },
+  cyan:    { hi: '#00eeff', mid: '#0088bb', lo: '#001833', bg: '#020814', scan: 'rgba(0,200,255,0.03)' },
+  fire:    { hi: '#ff8800', mid: '#ff3300', lo: '#330800', bg: '#0e0400', scan: 'rgba(255,100,0,0.03)' },
+  purple:  { hi: '#dd00ff', mid: '#8800cc', lo: '#220033', bg: '#080012', scan: 'rgba(180,0,255,0.03)' },
+  gold:    { hi: '#ffdd00', mid: '#cc8800', lo: '#332200', bg: '#0c0800', scan: 'rgba(255,200,0,0.03)' },
+  rainbow: { hi: null,      mid: null,      lo: '#111133', bg: '#060610', scan: 'rgba(100,100,255,0.02)' },
+  white:   { hi: '#ffffff', mid: '#888888', lo: '#1a1a1a', bg: '#000000', scan: 'rgba(255,255,255,0.02)' },
+};
+
+const CHARS = {
+  matrix: 'ﾊﾐﾋｰｳｼﾅﾓﾆｻﾜﾂｵﾘｱﾎﾃﾏｹﾒｴｶｷﾑﾕﾗｾﾈｽﾀﾇﾍ日月火水木金土0123456789',
+  binary: '01',
+  hex: '0123456789ABCDEF',
+  blocks: '█▓▒░▪▫■□',
+  circles: '●○◉◎◌◍',
+  glitch: '01#@!%&XABCDEF▓░█',
+  mixed: '01█▓◉#@&ABCDEFabcdef∑∆Ω∞≠≡±√',
+};
+
+function randChar(style) {
+  const s = CHARS[style] || CHARS.mixed;
+  return s[Math.floor(Math.random() * s.length)];
+}
+
+function getHue(x, t) {
+  return (x / canvas.width * 280 + t * 40) % 360;
+}
+
+function hiColor(scheme, x, y, t) {
+  if (scheme === 'rainbow') return `hsl(${getHue(x, t)}, 100%, 65%)`;
+  return SCHEMES[scheme].hi;
+}
+function midColor(scheme, x, y, t) {
+  if (scheme === 'rainbow') return `hsl(${getHue(x, t)}, 80%, 40%)`;
+  return SCHEMES[scheme].mid;
+}
+function loColor(scheme) {
+  return SCHEMES[scheme]?.lo || '#111';
+}
+
+// ---- Core render ----
+function render(t) {
+  const text = document.getElementById('textInput').value.trim() || 'PIXEL';
+  const style = document.getElementById('style').value;
+  const scheme = document.getElementById('colorScheme').value;
+  const density = parseInt(document.getElementById('density').value);
+  const noiseLevel = parseInt(document.getElementById('noise').value);
+  const glowLevel = parseInt(document.getElementById('glow').value);
+
+  const W = canvas.width, H = canvas.height;
+  const cell = density * 2 + 2;   // cell size in pixels
+  const cols = Math.floor(W / cell);
+  const rows = Math.floor(H / cell);
+  const bg = SCHEMES[scheme]?.bg || '#06060f';
+
+  // --- Render text to offscreen ---
+  const off = new OffscreenCanvas(W, H);
+  const octx = off.getContext('2d');
+  const maxFontSize = Math.min(H * 0.55, (W / (text.length * 0.62)));
+  const fontSize = Math.max(20, maxFontSize);
+  octx.clearRect(0, 0, W, H);
+  octx.fillStyle = '#fff';
+  octx.font = `900 ${fontSize}px Arial Black, Arial, sans-serif`;
+  octx.textAlign = 'center';
+  octx.textBaseline = 'middle';
+  octx.fillText(text, W / 2, H / 2);
+  const imgData = octx.getImageData(0, 0, W, H).data;
+
+  // Build grid map
+  const hit = new Uint8Array(cols * rows);
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const px = Math.floor((col + 0.5) * cell);
+      const py = Math.floor((row + 0.5) * cell);
+      const idx = (py * W + px) * 4;
+      hit[row * cols + col] = imgData[idx + 3] > 80 ? 1 : 0;
+    }
+  }
+
+  // --- Background fill ---
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Refresh char grid every 6 frames (when animating) or always when static
+  const doRefresh = !isAnimating || t % 6 === 0;
+
+  // --- Draw background noise ---
+  const noiseDensity = noiseLevel / 10 * 0.25;
+  ctx.font = `${cell}px 'Courier New', monospace`;
+
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const x = col * cell, y = row * cell;
+      const idx = row * cols + col;
+      const isText = hit[idx] === 1;
+
+      if (doRefresh) {
+        if (!charGrid[idx]) charGrid[idx] = {};
+        charGrid[idx].c = randChar(style);
+        charGrid[idx].flicker = Math.random();
+      }
+      const cell_data = charGrid[idx] || { c: '0', flicker: 0 };
+
+      if (isText) {
+        // --- Text pixel ---
+        const flicker = cell_data.flicker;
+        const brightness = isAnimating ? (0.6 + flicker * 0.4) : 1;
+
+        if (style === 'glitch' && Math.random() < 0.04) {
+          // Glitch offset
+          ctx.fillStyle = `rgba(255,0,100,0.7)`;
+          ctx.fillRect(x - 2, y, cell - 1, cell - 1);
+          ctx.fillStyle = `rgba(0,200,255,0.7)`;
+          ctx.fillRect(x + 2, y, cell - 1, cell - 1);
+        }
+
+        const col_hi = hiColor(scheme, x, y, t * 0.015);
+        ctx.globalAlpha = brightness;
+
+        if (style === 'blocks' || style === 'glitch') {
+          ctx.fillStyle = col_hi;
+          ctx.fillRect(x + 0.5, y + 0.5, cell - 1.5, cell - 1.5);
+          // Inner shade
+          ctx.fillStyle = midColor(scheme, x, y, t * 0.015);
+          ctx.fillRect(x + 2, y + 2, cell - 4, cell - 4);
+        } else if (style === 'circles') {
+          const r = (cell / 2 - 1) * (0.5 + flicker * 0.5);
+          ctx.fillStyle = col_hi;
+          ctx.beginPath();
+          ctx.arc(x + cell/2, y + cell/2, r, 0, Math.PI*2);
+          ctx.fill();
+        } else {
+          // Character styles
+          ctx.fillStyle = col_hi;
+          ctx.fillText(cell_data.c, x, y + cell - 1);
+        }
+        ctx.globalAlpha = 1;
+
+      } else {
+        // --- Background noise character ---
+        if (Math.random() < noiseDensity) {
+          const dimAlpha = 0.08 + Math.random() * 0.15;
+          ctx.globalAlpha = dimAlpha;
+          ctx.fillStyle = loColor(scheme);
+          if (style === 'blocks') {
+            ctx.fillRect(x + 0.5, y + 0.5, cell - 1.5, cell - 1.5);
+          } else if (style === 'circles') {
+            ctx.beginPath();
+            ctx.arc(x + cell/2, y + cell/2, cell/4, 0, Math.PI*2);
+            ctx.fill();
+          } else {
+            ctx.fillText(cell_data.c, x, y + cell - 1);
+          }
+          ctx.globalAlpha = 1;
+        }
+      }
+    }
+  }
+
+  // --- Glow pass ---
+  if (glowLevel > 0) {
+    const glowCanvas = new OffscreenCanvas(W, H);
+    const gctx = glowCanvas.getContext('2d');
+    const glowColor = SCHEMES[scheme]?.hi || '#00ff88';
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        if (hit[row * cols + col]) {
+          gctx.fillStyle = glowColor;
+          gctx.fillRect(col * cell, row * cell, cell, cell);
+        }
+      }
+    }
+    ctx.globalCompositeOperation = 'screen';
+    const glowAlpha = glowLevel * 0.018;
+    for (let spread = 2; spread <= glowLevel + 2; spread += 2) {
+      ctx.globalAlpha = glowAlpha;
+      ctx.drawImage(glowCanvas,
+        -spread, -spread, W + spread*2, H + spread*2);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // --- Scanlines ---
+  const scan = SCHEMES[scheme]?.scan || 'rgba(0,0,0,0.04)';
+  ctx.fillStyle = scan;
+  for (let sy = 0; sy < H; sy += 3) {
+    ctx.fillRect(0, sy, W, 1);
+  }
+
+  // --- Vignette ---
+  const vg = ctx.createRadialGradient(W/2, H/2, H*0.3, W/2, H/2, H*0.8);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, 'rgba(0,0,0,0.55)');
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, W, H);
+
+  // --- Matrix rain streaks (matrix style only) ---
+  if (style === 'matrix' && isAnimating) {
+    drawRain(scheme, cell, t);
+  }
+
+  document.getElementById('status').textContent =
+    `${cols}×${rows} cells · ${text.length} chars · frame ${t}`;
+}
+
+// Matrix rain overlay
+const rainDrops = [];
+function initRain(cell) {
+  const cols = Math.floor(canvas.width / cell);
+  for (let i = 0; i < cols; i++) {
+    rainDrops[i] = Math.random() * -canvas.height;
+  }
+}
+
+function drawRain(scheme, cell, t) {
+  const cols = Math.floor(canvas.width / cell);
+  const color = SCHEMES[scheme]?.hi || '#00ff88';
+  ctx.font = `${cell}px 'Courier New', monospace`;
+  ctx.globalAlpha = 0.5;
+  for (let i = 0; i < cols; i++) {
+    const y = rainDrops[i];
+    if (y > 0 && y < canvas.height) {
+      ctx.fillStyle = color;
+      ctx.fillText(randChar('matrix'), i * cell, y);
+    }
+    rainDrops[i] += cell * 0.4;
+    if (rainDrops[i] > canvas.height && Math.random() > 0.97) {
+      rainDrops[i] = 0;
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+function generate() {
+  if (isAnimating) return;
+  charGrid = [];
+  frame = 0;
+  const cell = parseInt(document.getElementById('density').value) * 2 + 2;
+  initRain(cell);
+  render(0);
+}
+
+function toggleAnimate() {
+  const btn = document.getElementById('animBtn');
+  if (isAnimating) {
+    cancelAnimationFrame(animId);
+    isAnimating = false;
+    btn.classList.remove('active');
+    btn.textContent = '动画 ANIM';
+  } else {
+    isAnimating = true;
+    btn.classList.add('active');
+    btn.textContent = '停止 STOP';
+    const cell = parseInt(document.getElementById('density').value) * 2 + 2;
+    initRain(cell);
+    charGrid = [];
+    ;(function loop() {
+      render(frame++);
+      animId = requestAnimationFrame(loop);
+    })();
+  }
+}
+
+function saveImage() {
+  const a = document.createElement('a');
+  a.download = `pixel-art-${Date.now()}.png`;
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+}
+
+// Controls → re-generate
+['style','colorScheme','density','noise','glow'].forEach(id => {
+  document.getElementById(id).addEventListener('change', () => {
+    if (!isAnimating) { charGrid = []; generate(); }
+  });
+});
+document.getElementById('textInput').addEventListener('input', () => {
+  if (!isAnimating) { clearTimeout(window._deb); window._deb = setTimeout(() => { charGrid = []; generate(); }, 300); }
+});
+document.getElementById('textInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { charGrid = []; generate(); }
+});
+
+// Init
+generate();
+</script>
+</body>
+</html>

@@ -174,6 +174,20 @@
       </select>
     </div>
     <div class="opt-label">
+      画布 Canvas
+      <select id="ratio">
+        <option value="2:1">2:1 横幅</option>
+        <option value="16:9" selected>16:9 宽屏</option>
+        <option value="4:3">4:3 标准</option>
+        <option value="1:1">1:1 方形</option>
+        <option value="3:4">3:4 竖版</option>
+        <option value="9:16">9:16 手机</option>
+        <option value="21:9">21:9 超宽</option>
+        <option value="3:1">3:1 长横</option>
+        <option value="1:3">1:3 长竖</option>
+      </select>
+    </div>
+    <div class="opt-label">
       密度 Density
       <input type="range" id="density" min="1" max="6" value="3">
     </div>
@@ -188,7 +202,7 @@
   </div>
 </div>
 
-<canvas id="canvas" width="880" height="440"></canvas>
+<canvas id="canvas" width="880" height="495"></canvas>
 <div class="status" id="status">ready</div>
 
 <script>
@@ -436,8 +450,24 @@ function drawRain(scheme, cell, t) {
   ctx.globalAlpha = 1;
 }
 
+const RATIOS = {
+  '2:1':  [2, 1], '16:9': [16, 9], '4:3':  [4, 3],
+  '1:1':  [1, 1], '3:4':  [3, 4],  '9:16': [9, 16],
+  '21:9': [21,9], '3:1':  [3, 1],  '1:3':  [1, 3],
+};
+
+function applyRatio() {
+  const BASE = 880;
+  const [rw, rh] = RATIOS[document.getElementById('ratio').value] || [16, 9];
+  const aspect = rh / rw;
+  canvas.width  = BASE;
+  canvas.height = Math.round(BASE * aspect);
+  canvas.style.maxHeight = '80vh';
+}
+
 function generate() {
   if (isAnimating) return;
+  applyRatio();
   charGrid = [];
   frame = 0;
   const cell = parseInt(document.getElementById('density').value) * 2 + 2;
@@ -456,6 +486,7 @@ function toggleAnimate() {
     isAnimating = true;
     btn.classList.add('active');
     btn.textContent = '停止 STOP';
+    applyRatio();
     const cell = parseInt(document.getElementById('density').value) * 2 + 2;
     initRain(cell);
     charGrid = [];
@@ -474,7 +505,7 @@ function saveImage() {
 }
 
 // Controls → re-generate
-['style','colorScheme','density','noise','glow'].forEach(id => {
+['ratio','style','colorScheme','density','noise','glow'].forEach(id => {
   document.getElementById(id).addEventListener('change', () => {
     if (!isAnimating) { charGrid = []; generate(); }
   });
